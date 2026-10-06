@@ -268,11 +268,11 @@ extension SceneDelegate: WKUIDelegate {
     }
 
     /// HTML <input type="file">：把系统选择器接上（图片上传靠它）
-    /// 部署目标抬到 iOS 18（设备是 26.x），WKOpenPanelParameters 可直接用。
+    /// iOS 18+ 的 completionHandler 带 @MainActor @Sendable 标注，少了会 "cannot find type ... in scope"。
     func webView(_ webView: WKWebView,
                  runOpenPanelWith parameters: WKOpenPanelParameters,
                  initiatedByFrame frame: WKFrameInfo,
-                 completionHandler: @escaping ([URL]?) -> Void) {
+                 completionHandler: @escaping @MainActor @Sendable ([URL]?) -> Void) {
         let picker = UIDocumentPickerViewController(
             forOpeningContentTypes: [.image, .plainText, .json], asCopy: true)
         picker.allowsMultipleSelection = parameters.allowsMultipleSelection
