@@ -6,7 +6,7 @@ options:
   #（报 "future Xcode project file format (77)"）。锁到 15.x 格式。
   xcodeVersion: "15.4"
   deploymentTarget:
-    iOS: "14.0"
+    iOS: "18.0"
   createIntermediateGroups: true
 
 settings:

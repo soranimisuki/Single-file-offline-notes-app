@@ -231,15 +231,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHa
 //      confirm() 会静默卡死（页面在等返回值，永远等不到）
 extension SceneDelegate: WKUIDelegate {
 
-    /// <select> 等原生弹出控件需要有人承载；返回 nil 表示交给 WebKit 默认处理
-    func webView(_ webView: WKWebView,
-                 requestMediaCapturePermissionFor origin: WKSecurityOrigin,
-                 initiatedByFrame frame: WKFrameInfo,
-                 type: WKMediaCaptureType,
-                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
-        decisionHandler(.grant)
-    }
-
     /// JS alert()
     func webView(_ webView: WKWebView,
                  runJavaScriptAlertPanelWithMessage message: String,
@@ -276,23 +267,18 @@ extension SceneDelegate: WKUIDelegate {
         presentSheet(alert, tag: "输入框")
     }
 
-    /// HTML <input type="file">：把系统选择器接上（页面里图片上传、导入兜底都靠它）
+    /// HTML <input type="file">：把系统选择器接上（图片上传靠它）
+    /// 部署目标抬到 iOS 18（设备是 26.x），WKOpenPanelParameters 可直接用。
     func webView(_ webView: WKWebView,
                  runOpenPanelWith parameters: WKOpenPanelParameters,
                  initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping ([URL]?) -> Void) {
-        let picker: UIDocumentPickerViewController
-        if parameters.allowsMultipleSelection {
-            picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
-            picker.allowsMultipleSelection = true
-        } else {
-            picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
-            picker.allowsMultipleSelection = false
-        }
+        let picker = UIDocumentPickerViewController(
+            forOpeningContentTypes: [.image, .plainText, .json], asCopy: true)
+        picker.allowsMultipleSelection = parameters.allowsMultipleSelection
         openPanelCompletion = completionHandler
         presentSheet(picker, tag: "文件选择器")
     }
-}
 
 // MARK: - 加载诊断
 
