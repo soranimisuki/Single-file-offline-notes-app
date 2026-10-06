@@ -1,0 +1,101 @@
+name: Build IPA (unsigned)
+
+# 在 GitHub 的 macOS 云主机上构建 iOS 应用，产出**未签名 IPA**。
+# 签名/侧载由使用者自己完成（Sideloadly / AltStore / Xcode / 爱思等）。
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'index.html'
+      - 'ios/**'
+      - '.github/workflows/ios-ipa.yml'
+
+concurrency:
+  group: ios-ipa
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # macOS runner：public 仓库免费额度内可用（macOS 按 10x 计费）
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 选 Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app 2>/dev/null || true
+          xcodebuild -version
+          swift --version
+
+      - name: 安装 xcodegen
+        run: brew install xcodegen
+
+      - name: 准备 Web 资源（页面 + 本地 MathJax）
+        run: |
+          set -euo pipefail
+          rm -rf ios/Resources/Web
+          mkdir -p ios/Resources/Web/_mathjax
+          # 页面：把 MathJax CDN 改成本地相对路径 _mathjax/tex-svg.js
+          python3 - <<'PY'
+          src = open('index.html', encoding='utf-8').read()
+          cdn = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.js'
+          assert cdn in src, '页面里没找到 MathJax CDN 地址'
+          open('ios/Resources/Web/index.html', 'w', encoding='utf-8').write(src.replace(cdn, '_mathjax/tex-svg.js'))
+          print('index.html ok, cdn -> local')
+          PY
+          # MathJax 完整本地副本（含 input/ 动态扩展 + output/svg）
+          TGBALL=mathjax-3.2.2.tgz
+          curl -sSL -o "$TGBALL" https://registry.npmjs.org/mathjax/-/mathjax-3.2.2.tgz
+          tar -xzf "$TGBALL"
+          cp -R package/es5/tex-svg.js ios/Resources/Web/_mathjax/
+          cp -R package/es5/input ios/Resources/Web/_mathjax/
+          [ -d package/es5/output/svg ] && cp -R package/es5/output/svg ios/Resources/Web/_mathjax/output-svg || true
+          rm -rf package "$TGBALL"
+          du -sh ios/Resources/Web
+          test -f ios/Resources/Web/_mathjax/tex-svg.js
+          test -f ios/Resources/Web/_mathjax/input/tex/extensions/boldsymbol.js
+
+      - name: 生成 Xcode 工程
+        run: |
+          cd ios
+          xcodegen generate
+          ls -la Biji.xcodeproj | head -3
+
+      - name: 编译（真机 arm64，不签名）
+        run: |
+          cd ios
+          set -o pipefail
+          xcodebuild -project Biji.xcodeproj -scheme Biji \
+            -configuration Release -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO ARCHS=arm64 \
+            build | tee /tmp/xcodebuild.log
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          echo "APP=$APP"
+          test -n "$APP"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/ipa/Payload/"
+          # 顺手留一份 .app，方便需要时手动处理
+          echo "APP_DIR=$APP" >> "$GITHUB_ENV"
+
+      - name: 打成未签名 IPA
+        run: |
+          cd "$RUNNER_TEMP/ipa"
+          zip -qry "$GITHUB_WORKSPACE/笔记站-unsigned.ipa" Payload
+          cd "$GITHUB_WORKSPACE"
+          ls -lh 笔记站-unsigned.ipa
+          unzip -l 笔记站-unsigned.ipa | head -12
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: biji-unsigned-ipa
+          path: 笔记站-unsigned.ipa
+          if-no-files-found: error
+
+      - name: 失败时留日志
+        if: failure()
+        run: tail -60 /tmp/xcodebuild.log || true

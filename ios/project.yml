@@ -1,0 +1,49 @@
+name: Biji
+options:
+  bundleIdPrefix: com.soranimisuki
+  deploymentTarget:
+    iOS: "14.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: ""
+    DEVELOPMENT_TEAM: ""
+    ENABLE_BITCODE: NO
+    TARGETED_DEVICE_FAMILY: "1,2"      # iPhone + iPad
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
+
+targets:
+  Biji:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Resources
+        type: folder          # Web/ 整目录作为资源（HTML + 本地 MathJax）
+      - path: Resources/AppIcon.png
+        buildPhase: resources
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: 笔记站
+        CFBundleShortVersionString: "1.0"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIFileSharingEnabled: true          # 备份 JSON 可通过「文件」App 看到
+        LSSupportsOpeningDocumentsInPlace: true
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true      # 允许加载 http://127.0.0.1 的内置页面
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.soranimisuki.biji
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES

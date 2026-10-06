@@ -935,6 +935,7 @@ window.MathJax = {
         <select id="ocr-provider">
           <option value="custom">通用 AI 视觉接口（智谱 / DeepSeek / 硅基流动…）</option>
           <option value="simpletex">SimpleTex（专业公式模型）</option>
+          <option value="local">本地模型（LaTeXSnipper · 本机识别）</option>
         </select>
       </div>
       <div id="ocr-custom-panel">
@@ -968,6 +969,28 @@ window.MathJax = {
           </div>
         </div>
       </div>
+      <div id="ocr-local-panel" style="display:none">
+        <div class="helpbox">
+          <b>本地模型（LaTeXSnipper）</b>：截图交给本机正在运行的 LaTeXSnipper 跑本地识别 —— 图片不出本机、不消耗 API 额度。
+          <div id="ocr-local-state" style="margin-top:6px">检测中…</div>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <label>识别模式</label>
+          <div class="seg-ctrl">
+            <button type="button" id="ocr-local-formula" class="on">∑ 公式优先</button>
+            <button type="button" id="ocr-local-mixed">📄 混排</button>
+            <button type="button" id="ocr-local-text">T 纯文字</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>模型后端</label>
+          <div class="seg-ctrl">
+            <button type="button" id="ocr-local-mathcraft" class="on">MathCraft（本地）</button>
+            <button type="button" id="ocr-local-external">外部模型</button>
+          </div>
+        </div>
+        <button class="btn sm" id="btn-ocr-local-test" type="button">🔌 测试连接</button>
+      </div>
       <div class="field">
         <label>识别结果（可直接修改再插入）</label>
         <textarea id="ocr-result" class="ocr-result" placeholder=""></textarea>
@@ -1000,7 +1023,7 @@ window.MathJax = {
           <li><b>放图片 + 调显示大小</b>：新建笔记时点虚线框选图或直接拖入，可给每张图设「图片说明」。每张图的显示大小可单独控制——在笔记卡片里把鼠标移到图片上，拖右下角的小方块手柄即可实时改大小；或在编辑笔记时用 <code>缩略 / 小 / 中 / 大 / 满宽</code> 预设和宽度滑块设定。大小按张保存，导出 JSON 也会带上。还能在编辑器「图片位置」里选图片排在<b>文字上方</b>或<b>文字下方</b>（按笔记保存，默认下方）。</li>
           <li><b>正文编辑器</b>：工具栏一键排版——<code>H₂</code> 标题、B 加粗、I 斜体、1. 有序列表、• 无序列表、❝ 引用、&lt;/&gt; 行内代码、Σ 公式（选中文字再点会包成 $...$）、🖼️ 添加图片、🖍 高亮、✕ 清除格式；点 <code>👁</code> 预览渲染效果（公式/高亮照常显示）。支持直接粘贴 <b>Markdown 原文</b>（# 标题、**加粗**、*斜体*、- 列表、1. 列表、> 引用、`行内代码` 自动转成排版），也可以直接<b>粘贴截图</b>（图片会进下方图片列表）。编辑区右下角可拖拽调高。</li>
           <li><b>LaTeX 公式</b>：行内写 <code>$...$</code> 或 <code>\(...\)</code>，独立成行写 <code>$$...$$</code>，卡片里自动渲染成公式（编辑框内显示源码）。首次渲染需联网加载 MathJax，之后同会话离线可用。公式里的小于/大于号建议写 <code>\lt</code> / <code>\gt</code>。</li>
-          <li><b>图片识别（OCR）</b>：正文工具栏 <code>📷</code> 打开识别面板——把教材/笔记截图直接 <b>Ctrl+V</b> 粘贴（或点击选图/拖图），文字与公式一起转成 LaTeX，可在结果框修改后一键<b>插入正文</b>或复制。识别后端：<b>通用 AI 视觉接口</b>（**厂商管理器**：左侧厂商列表、右侧该厂商独立的 Base URL / API 格式 / API Key / 模型列表——各厂商配置互不干扰，改动自动保存；「＋ 添加厂商」内置 18 家预设一键填好地址：智谱/DeepSeek/硅基流动/通义/豆包/混元/千帆/Kimi/阶跃/零一/MiniMax/OpenAI/Anthropic/Gemini/Groq/Grok/OpenRouter；「查询模型」用该厂商的 Key 拉取可用模型）或 <b>SimpleTex</b>（专业公式模型）。Key 只保存在本机浏览器。</li>
+          <li><b>图片识别（OCR）</b>：正文工具栏 <code>📷</code> 打开识别面板——把教材/笔记截图直接 <b>Ctrl+V</b> 粘贴（或点击选图/拖图），文字与公式一起转成 LaTeX，可在结果框修改后一键<b>插入正文</b>或复制。识别后端：<b>通用 AI 视觉接口</b>（**厂商管理器**：左侧厂商列表、右侧该厂商独立的 Base URL / API 格式 / API Key / 模型列表——各厂商配置互不干扰，改动自动保存；「＋ 添加厂商」内置 18 家预设一键填好地址：智谱/DeepSeek/硅基流动/通义/豆包/混元/千帆/Kimi/阶跃/零一/MiniMax/OpenAI/Anthropic/Gemini/Groq/Grok/OpenRouter；「查询模型」用该厂商的 Key 拉取可用模型）、<b>SimpleTex</b>（专业公式模型），或 <b>本地模型</b>（调用本机运行的 LaTeXSnipper 识别，图片不出本机、不花额度；<b>只有用 笔记站.exe 桌面版打开才有这一项</b>，浏览器版会提示无本地桥接）。Key 只保存在本机浏览器。</li>
           <li><b>搜索</b>：顶部搜索框检索标题、正文、标签。</li>
           <li><b>导出 / 导入</b>：右上角导出为一份 JSON（含图片），换设备或备份用；导入可还原。</li>
           <li><b>自由布局（防堆叠）</b>：工具条 <code>▦ 网格 / ❏ 自由</code> 切换。自由模式下按住卡片标题栏拖动、拉边缘改大小；<b>块之间不重叠</b>——一旦会压到别的笔记就停在那个位置、过不去，也不会推挤对方。新建笔记会自动找空白处落下。若已有笔记叠在一起，点工具条的 <code>✧ 整理布局</code>（仅自由模式显示）可一次性把它们散开。位置自动保存。</li>
@@ -2132,7 +2155,7 @@ function renderOcrVendors(){
 }
 function openOcr(){
   var savedP=ocrPrefGet('biji-ocr-provider');
-  $('ocr-provider').value=(savedP==='simpletex')?'simpletex':'custom';
+  $('ocr-provider').value=(savedP==='simpletex'||savedP==='local')?savedP:'custom';
   ocrApplyProviderUI($('ocr-provider').value);
   ocrDB();            // 触发旧配置迁移
   renderOcrVendors();
@@ -2142,10 +2165,40 @@ function openOcr(){
 $('tb-ocr').onclick=openOcr;
 function ocrApplyProviderUI(p){
   $('ov-ocr').querySelector('.modal').style.maxWidth=(p==='custom')?'800px':'560px';
-  $('ocr-custom-panel').style.display=(p==='simpletex')?'none':'';
+  $('ocr-custom-panel').style.display=(p==='custom')?'':'none';
   $('ocr-stx-panel').style.display=(p==='simpletex')?'':'none';
+  $('ocr-local-panel').style.display=(p==='local')?'':'none';
+  if(p==='local') ocrLocalRefreshState();
 }
 $('ocr-provider').onchange=function(){ ocrApplyProviderUI(this.value); };
+
+/* ---------- 本地模型：调用 LaTeXSnipper 自动化接口（仅桌面版 笔记站.exe） ---------- */
+function ocrBridge(){ try{ return (window.pywebview && window.pywebview.api)?window.pywebview.api:null; }catch(e){ return null; } }
+function ocrLocalMode(){
+  if($('ocr-local-formula').classList.contains('on')) return 'formula';
+  if($('ocr-local-text').classList.contains('on')) return 'text';
+  return 'mixed';
+}
+function ocrLocalBackend(){ return $('ocr-local-mathcraft').classList.contains('on')?'mathcraft':'external'; }
+function ocrLocalSetSeg(id,group){ group.forEach(function(x){ $(x).classList.toggle('on',x===id); }); }
+$('ocr-local-formula').onclick=function(){ ocrLocalSetSeg('ocr-local-formula',['ocr-local-formula','ocr-local-mixed','ocr-local-text']); };
+$('ocr-local-mixed').onclick=function(){ ocrLocalSetSeg('ocr-local-mixed',['ocr-local-formula','ocr-local-mixed','ocr-local-text']); };
+$('ocr-local-text').onclick=function(){ ocrLocalSetSeg('ocr-local-text',['ocr-local-formula','ocr-local-mixed','ocr-local-text']); };
+$('ocr-local-mathcraft').onclick=function(){ ocrLocalSetSeg('ocr-local-mathcraft',['ocr-local-mathcraft','ocr-local-external']); };
+$('ocr-local-external').onclick=function(){ ocrLocalSetSeg('ocr-local-external',['ocr-local-mathcraft','ocr-local-external']); };
+function ocrLocalRefreshState(){
+  var el=$('ocr-local-state'), b=ocrBridge();
+  if(!b){
+    el.innerHTML='<span style="color:var(--danger)">当前是浏览器版，没有本地桥接；请用 <b>笔记站.exe</b> 打开才能用本地模型。</span>';
+    return;
+  }
+  el.textContent='检测 LaTeXSnipper 服务…';
+  b.snipper_status().then(function(r){
+    if(r&&r.ok) el.innerHTML='<span style="color:var(--ok)">✓ '+esc(r.message)+'</span>';
+    else el.innerHTML='<span style="color:var(--danger)">✕ '+esc((r&&r.message)||'未连接')+'</span>';
+  }).catch(function(e){ el.innerHTML='<span style="color:var(--danger)">✕ '+esc((e&&e.message)||String(e))+'</span>'; });
+}
+$('btn-ocr-local-test').onclick=function(){ if(!ocrBridge()){ toast('本地模型仅桌面版可用','err'); return; } ocrLocalRefreshState(); };
 $('ocr-token').addEventListener('change',function(){ ocrSaveToken(this.value.trim()); });
 $('ocr-mode-formula').onclick=function(){ $('ocr-mode-formula').classList.add('on'); $('ocr-mode-mixed').classList.remove('on'); };
 $('ocr-mode-mixed').onclick=function(){ $('ocr-mode-mixed').classList.add('on'); $('ocr-mode-formula').classList.remove('on'); };
@@ -2216,8 +2269,29 @@ function stripFences(s){
   return s.trim();
 }
 function runOcr(file){
-  if($('ocr-provider').value==='simpletex') return runOcrSimpleTex(file);
+  var p=$('ocr-provider').value;
+  if(p==='simpletex') return runOcrSimpleTex(file);
+  if(p==='local') return runOcrLocal(file);
   return runOcrVision(file);
+}
+/* 本地模型：图片 dataURL → Python 桥 → LaTeXSnipper 自动化接口 */
+function runOcrLocal(file){
+  var b=ocrBridge();
+  if(!b){ setOcrStatus('本地模型仅在桌面版（笔记站.exe）可用','err'); return Promise.resolve(false); }
+  setOcrStatus('本地识别中（MathCraft 需要几秒）…');
+  return new Promise(function(resolve){
+    var fr=new FileReader();
+    fr.onload=function(){
+      b.ocr_image(fr.result, ocrLocalMode(), ocrLocalBackend(), 90).then(function(r){
+        if(r&&r.ok&&r.text){ $('ocr-result').value=r.text; setOcrStatus('本地识别完成','ok'); resolve(true); }
+        else { setOcrStatus('本地识别失败：'+((r&&r.message)||'无输出'),'err'); resolve(false); }
+      }).catch(function(e){
+        setOcrStatus('本地识别异常：'+((e&&e.message)||String(e)),'err'); resolve(false);
+      });
+    };
+    fr.onerror=function(){ setOcrStatus('图片读取失败','err'); resolve(false); };
+    fr.readAsDataURL(file);
+  });
 }
 function ocrSplitDataURL(durl){
   var m=String(durl).match(/^data:([^;]+);base64,(.*)$/);
@@ -2710,26 +2784,58 @@ $('btn-export').onclick=function(){
     });
   });
   chain.then(function(){
-    var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    var name='笔记站-备份-'+new Date().toISOString().slice(0,10)+'.json';
+    var text=JSON.stringify(data,null,2);
+    // iOS/桌面壳：a.download 无效，改走原生保存
+    if(bijiSaveText(name,text)){ toast('已导出 '+data.notes.length+' 条笔记（已保存到「文件」）','ok'); return; }
+    var blob=new Blob([text],{type:'application/json'});
     var u=URL.createObjectURL(blob); var a=document.createElement('a');
-    a.href=u; a.download='笔记站-备份-'+new Date().toISOString().slice(0,10)+'.json';
+    a.href=u; a.download=name;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},1000);
     toast('已导出 '+data.notes.length+' 条笔记','ok');
   }).catch(function(e){ console.error(e); toast('导出失败：'+e.message,'err'); });
 };
 
+/* ---------- 原生壳桥（iOS WKWebView / 桌面壳）---------- */
+function bijiNative(){
+  try{
+    if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.biji) return window.webkit.messageHandlers.biji;
+  }catch(e){}
+  try{
+    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.save_text) return window.pywebview.api;
+  }catch(e){}
+  return null;
+}
+function bijiSaveText(name,text){
+  var nat=bijiNative(); if(!nat) return false;
+  try{
+    if(nat.postMessage) nat.postMessage({type:'export',name:name,data:text});
+    else if(nat.save_text) nat.save_text(name,text);
+    else return false;
+    return true;
+  }catch(e){ return false; }
+}
+function bijiPickText(cb){
+  var nat=bijiNative(); if(!nat) return false;
+  window.__bijiNativeImport=function(txt){ try{ cb(txt); }catch(e){ toast('导入失败：'+e.message,'err'); } };
+  try{
+    if(nat.postMessage) nat.postMessage({type:'import'});
+    else if(nat.pick_text) nat.pick_text();
+    else return false;
+    return true;
+  }catch(e){ return false; }
+}
+
 var importInput=document.createElement('input'); importInput.type='file'; importInput.accept='.json,application/json';
-$('btn-import').onclick=function(){ importInput.click(); };
+$('btn-import').onclick=function(){ if(bijiPickText(handleImportText)) return; importInput.click(); };
+function handleImportText(txt){
+  try{ importData(JSON.parse(txt)); }
+  catch(err){ toast('导入失败：JSON 解析错误','err'); }
+}
 importInput.addEventListener('change',function(e){
   var f=e.target.files[0]; if(!f)return;
   var fr=new FileReader();
-  fr.onload=function(){
-    try{
-      var data=JSON.parse(fr.result);
-      importData(data);
-    }catch(err){ toast('导入失败：JSON 解析错误','err'); }
-    e.target.value='';
-  };
+  fr.onload=function(){ handleImportText(fr.result); e.target.value=''; };
   fr.readAsText(f);
 });
 function importData(data){
@@ -3224,6 +3330,18 @@ function selftest(){
     ok('ocr provider select exists', !!$('ocr-provider'));
     $('tb-ocr').click();
     ok('ocr modal opens', $('ov-ocr').classList.contains('show'));
+    // 本地模型（LaTeXSnipper）流程：浏览器版无桥接时应明确报错而不是静默失败
+    ok('ocr local option exists', !!$('ocr-provider').querySelector('option[value="local"]'));
+    $('ocr-provider').value='local'; ocrApplyProviderUI('local');
+    ok('local panel shown only for local', $('ocr-local-panel').style.display!=='none'
+        && $('ocr-custom-panel').style.display==='none' && $('ocr-stx-panel').style.display==='none');
+    ok('local mode/backend defaults', ocrLocalMode()==='formula' && ocrLocalBackend()==='mathcraft');
+    $('ocr-local-mixed').click(); $('ocr-local-external').click();
+    ok('local seg-ctrl switches', ocrLocalMode()==='mixed' && ocrLocalBackend()==='external');
+    $('ocr-local-formula').click(); $('ocr-local-mathcraft').click();
+    var ff0=new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}); ff0.name='t.png';
+    ok('local ocr refuses without bridge', ocrBridge()===null);
+    $('ocr-provider').value='simpletex'; ocrApplyProviderUI('simpletex');
     // SimpleTex 流程
     $('ocr-provider').value='simpletex'; ocrApplyProviderUI('simpletex');
     $('ocr-token').value='TOK123';
