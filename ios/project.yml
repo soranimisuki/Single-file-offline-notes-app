@@ -2,6 +2,9 @@ name: Biji
 
 options:
   bundleIdPrefix: com.soranimisuki
+  # 关键：xcodegen 2.46 默认生成 Xcode 16 工程格式(77)，Xcode 15.4 打不开
+  #（报 "future Xcode project file format (77)"）。锁到 15.x 格式。
+  xcodeVersion: "15.4"
   deploymentTarget:
     iOS: "14.0"
   createIntermediateGroups: true
