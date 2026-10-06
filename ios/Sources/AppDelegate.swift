@@ -30,6 +30,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHa
     private var server: LocalServer?
     private var loaded = false
     private let diag = UILabel()
+    /// `<input type=file>` 的完成回调（WKUIDelegate 给的，不能丢）
+    private var openPanelCompletion: (([URL]?) -> Void)?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
                options connectionOptions: UIScene.ConnectionOptions) {
@@ -70,6 +72,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHa
         let web = WKWebView(frame: root.view.bounds, configuration: config)
         web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         web.navigationDelegate = self
+        web.uiDelegate = self          // 关键：没有它 <select> / <input type=file> / confirm() 全部无反应
         webView = web
         root.view.addSubview(web)
 
@@ -115,6 +118,14 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHa
         guard let host = window?.rootViewController else {
             note("无法弹出\(tag)：窗口没有 rootViewController")
             return false
+        }
+        // 上一个弹窗还在（比如 confirm 之后又来文件选择器）时，先等它关掉再弹，
+        // 否则 UIKit 会报 "already presenting" 并静默失败。
+        if host.presentedViewController != nil {
+            host.dismiss(animated: true) { [weak self] in
+                _ = self?.presentSheet(vc, tag: tag)
+            }
+            return true
         }
         if vc.popoverPresentationController != nil {
             vc.popoverPresentationController?.sourceView = host.view
@@ -211,6 +222,78 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHa
     }
 }
 
+// MARK: - WKUIDelegate：下拉框 / 文件选择 / JS 对话框
+//
+// 缺这一段会导致三类功能「点了没反应」：
+//   1. HTML <select> 下拉（识别后端、API 格式、分区…）——iOS 15+ 由 UIDelegate 弹原生控件
+//   2. <input type="file"> 点击
+//   3. JS 的 alert() / confirm() / prompt()——WKWebView 默认拦截，导入流程里的
+//      confirm() 会静默卡死（页面在等返回值，永远等不到）
+extension SceneDelegate: WKUIDelegate {
+
+    /// <select> 等原生弹出控件需要有人承载；返回 nil 表示交给 WebKit 默认处理
+    func webView(_ webView: WKWebView,
+                 requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                 initiatedByFrame frame: WKFrameInfo,
+                 type: WKMediaCaptureType,
+                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        decisionHandler(.grant)
+    }
+
+    /// JS alert()
+    func webView(_ webView: WKWebView,
+                 runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping () -> Void) {
+        let alert = UIAlertController(title: "笔记站", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "好", style: .default) { _ in completionHandler() })
+        presentSheet(alert, tag: "提示框")
+    }
+
+    /// JS confirm()——导入流程靠它问「合并还是覆盖」，必须实现
+    func webView(_ webView: WKWebView,
+                 runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping (Bool) -> Void) {
+        let alert = UIAlertController(title: "请确认", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default) { _ in completionHandler(true) })
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel) { _ in completionHandler(false) })
+        presentSheet(alert, tag: "确认框")
+    }
+
+    /// JS prompt()
+    func webView(_ webView: WKWebView,
+                 runJavaScriptTextInputPanelWithPrompt prompt: String,
+                 defaultText: String?,
+                 initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping (String?) -> Void) {
+        let alert = UIAlertController(title: "请输入", message: prompt, preferredStyle: .alert)
+        alert.addTextField { $0.text = defaultText }
+        alert.addAction(UIAlertAction(title: "确定", style: .default) { _ in
+            completionHandler(alert.textFields?.first?.text)
+        })
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel) { _ in completionHandler(nil) })
+        presentSheet(alert, tag: "输入框")
+    }
+
+    /// HTML <input type="file">：把系统选择器接上（页面里图片上传、导入兜底都靠它）
+    func webView(_ webView: WKWebView,
+                 runOpenPanelWith parameters: WKOpenPanelParameters,
+                 initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping ([URL]?) -> Void) {
+        let picker: UIDocumentPickerViewController
+        if parameters.allowsMultipleSelection {
+            picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+            picker.allowsMultipleSelection = true
+        } else {
+            picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+            picker.allowsMultipleSelection = false
+        }
+        openPanelCompletion = completionHandler
+        presentSheet(picker, tag: "文件选择器")
+    }
+}
+
 // MARK: - 加载诊断
 
 extension SceneDelegate: WKNavigationDelegate {
@@ -239,6 +322,12 @@ extension SceneDelegate: WKNavigationDelegate {
 
 extension SceneDelegate: UIDocumentPickerDelegate {
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        // `<input type=file>` 的回调：原生桥的导入走下面的 didPickImport 分支
+        if let cb = openPanelCompletion {
+            openPanelCompletion = nil
+            cb(urls)
+            return
+        }
         guard let url = urls.first else { return }
         var text = ""
         if let s = try? String(contentsOf: url, encoding: .utf8) {
@@ -247,5 +336,12 @@ extension SceneDelegate: UIDocumentPickerDelegate {
             text = String(decoding: d, as: UTF8.self)
         }
         deliverImported(text: text)
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        if let cb = openPanelCompletion {
+            openPanelCompletion = nil
+            cb(nil)
+        }
     }
 }

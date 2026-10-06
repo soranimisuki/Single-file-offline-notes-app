@@ -952,6 +952,11 @@ window.MathJax = {
           <option value="simpletex">SimpleTex（专业公式模型）</option>
           <option value="local">本地模型（LaTeXSnipper · 本机识别）</option>
         </select>
+        <div class="seg-ctrl" id="ocr-provider-seg" style="margin-top:8px;flex-wrap:wrap">
+          <button type="button" data-prov="custom">AI 视觉接口</button>
+          <button type="button" data-prov="simpletex">SimpleTex</button>
+          <button type="button" data-prov="local">本地模型</button>
+        </div>
       </div>
       <div id="ocr-custom-panel">
         <div class="ocr-mgr">
@@ -2183,9 +2188,20 @@ function ocrApplyProviderUI(p){
   $('ocr-custom-panel').style.display=(p==='custom')?'':'none';
   $('ocr-stx-panel').style.display=(p==='simpletex')?'':'none';
   $('ocr-local-panel').style.display=(p==='local')?'':'none';
+  // 按钮组与下拉框保持同步（部分环境 <select> 弹不出来时的备用入口）
+  $('ocr-provider-seg').querySelectorAll('button[data-prov]').forEach(function(b){
+    b.classList.toggle('on', b.getAttribute('data-prov')===p);
+  });
   if(p==='local') ocrLocalRefreshState();
 }
 $('ocr-provider').onchange=function(){ ocrApplyProviderUI(this.value); };
+$('ocr-provider-seg').querySelectorAll('button[data-prov]').forEach(function(b){
+  b.onclick=function(){
+    var v=b.getAttribute('data-prov');
+    $('ocr-provider').value=v;
+    ocrApplyProviderUI(v);
+  };
+});
 
 /* ---------- 本地模型：调用 LaTeXSnipper 自动化接口（仅桌面版 笔记站.exe） ---------- */
 function ocrBridge(){ try{ return (window.pywebview && window.pywebview.api)?window.pywebview.api:null; }catch(e){ return null; } }
@@ -3359,6 +3375,10 @@ function selftest(){
     ok('ocr modal opens', $('ov-ocr').classList.contains('show'));
     // 本地模型（LaTeXSnipper）流程：浏览器版无桥接时应明确报错而不是静默失败
     ok('ocr local option exists', !!$('ocr-provider').querySelector('option[value="local"]'));
+    ok('ocr provider seg fallback exists', $('ocr-provider-seg').querySelectorAll('button[data-prov]').length===3);
+    $('ocr-provider-seg').querySelector('button[data-prov="simpletex"]').click();
+    ok('seg click drives provider select', $('ocr-provider').value==='simpletex'
+        && $('ocr-provider-seg').querySelector('button[data-prov="simpletex"]').classList.contains('on'));
     $('ocr-provider').value='local'; ocrApplyProviderUI('local');
     ok('local panel shown only for local', $('ocr-local-panel').style.display!=='none'
         && $('ocr-custom-panel').style.display==='none' && $('ocr-stx-panel').style.display==='none');
