@@ -2,9 +2,24 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!-- PWA：添加到主屏幕后全屏运行、砂岩主题色 -->
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="笔记站">
+<meta name="theme-color" content="#e0ae05">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<link rel="icon" href="./icon-192.png">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/TPCTang/MiSans-Webfont@latest/fonts.css">
 <title>笔记站</title>
+<script>
+// 离线缓存：file:// 下不支持，https(Pages) 下才注册
+if(location.protocol==='https:'&&'serviceWorker' in navigator){
+  window.addEventListener('load',function(){ navigator.serviceWorker.register('./sw.js').catch(function(){}); });
+}
+</script>
 <script>
 window.MathJax = {
   tex: { inlineMath: [['$','$'],['\\(','\\)']], displayMath: [['$$','$$'],['\\[','\\]']], processEscapes: true },
