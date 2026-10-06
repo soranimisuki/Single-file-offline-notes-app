@@ -10,6 +10,9 @@ on:
       - 'ios/**'
       - '.github/workflows/ios-ipa.yml'
 
+permissions:
+  contents: write        # 需要写 Release 权限来挂 IPA 附件
+
 concurrency:
   group: ios-ipa
   cancel-in-progress: true
@@ -100,6 +103,25 @@ jobs:
           name: biji-unsigned-ipa
           path: biji-unsigned.ipa
           if-no-files-found: error
+
+      - name: 发布到 Releases（免登录直链）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=v1.0-ipa
+          NOTES='未签名 IPA（iOS 14+，iPhone/iPad 通用）。
+
+          安装：下载后用 Sideloadly / AltStore / 爱思 导入，填自己的 Apple ID 签名。
+          bundle id: com.soranimisuki.biji
+
+          这是 GitHub Actions 自动构建的产物，每次推送 index.html 或 ios/ 会自动更新。'
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" biji-unsigned.ipa --clobber
+          else
+            gh release create "$TAG" biji-unsigned.ipa --title '笔记站 iOS（未签名 IPA）' --notes "$NOTES"
+          fi
+          echo "下载地址："
+          gh release view "$TAG" --json assets -q '.assets[].browser_download_url'
 
       - name: 失败时打印错误
         if: failure()
