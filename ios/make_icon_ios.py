@@ -3,7 +3,8 @@
 import os
 from PIL import Image, ImageDraw, ImageFont
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Resources", "AppIcon.png")
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Resources",
+                   "Assets.xcassets", "AppIcon.appiconset", "AppIcon.png")
 S = 1024
 
 img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
@@ -30,5 +31,6 @@ w, h = bb[2] - bb[0], bb[3] - bb[1]
 d.text(((S - w) / 2 - bb[0], (S - h) / 2 - bb[1] - 30), ch, font=font, fill=(21, 20, 16, 255))
 
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
-img.save(OUT)
-print("written", OUT, os.path.getsize(OUT), "bytes", img.size)
+# iOS 图标不能带 alpha 通道（actool 会警告/报错）→ 转成 RGB 再存
+img.convert("RGB").save(OUT, format="PNG")
+print("written", OUT, os.path.getsize(OUT), "bytes", img.size, "mode=RGB")

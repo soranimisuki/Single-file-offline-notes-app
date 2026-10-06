@@ -1,40 +1,35 @@
 import Foundation
 import Network
 
-/// 极简静态文件服务器：把 App Bundle 里的 Web/ 目录挂到 http://127.0.0.1:<port>
-/// 目的：给 WKWebView 一个「正常来源」，否则 file:// 下 localStorage / IndexedDB
-/// （笔记站把图片存在 IndexedDB）不可用，等于笔记功能废掉。
+/// 极简静态文件服务器：把 App Bundle 里的 Web/ 目录挂到 http://127.0.0.1:<随机端口>
+/// 目的：给 WKWebView 一个「正常来源」。WKWebView 在 file:// 下 IndexedDB 不可用，
+/// 而笔记站的图片存在 IndexedDB —— 直接 loadFileURL 会导致图片功能失效。
 final class LocalServer {
 
-    enum ServerError: Error { case cannotListen, noRoot }
+    enum ServerError: Error { case noRoot }
 
-    let port: UInt16
     private let root: URL
     private let queue = DispatchQueue(label: "biji.server", qos: .userInitiated)
     private var listener: NWListener?
-    private let keepAlive: [String] = []
+    private var ready = false
 
-    /// root：资源目录；port 传 0 表示由系统分配空闲端口
-    init(root: URL, port: UInt16 = 0) throws {
+    init(root: URL) throws {
         guard FileManager.default.fileExists(atPath: root.path) else { throw ServerError.noRoot }
-        self.root = root
-        let params = NWParameters.tcp
-        if let tcp = params.defaultProtocolStack.internetProtocol as? NWProtocolTCP.Options {
-            tcp.noDelay = true
-        }
-        let l = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port) ?? .any)
-        self.listener = l
-        self.port = 0
+        self.root = root.standardizedFileURL
+        self.listener = try NWListener(using: .tcp, on: NWEndpoint.Port.any)
     }
 
-    /// 启动监听；端口就绪后回调 assignedPort
-    func start(onReady: @escaping (UInt16) -> Void) throws {
-        guard let listener = listener else { throw ServerError.cannotListen }
+    /// 监听就绪后回调实际端口
+    func start(onReady: @escaping (UInt16) -> Void) {
+        guard let listener = listener else { return }
         listener.stateUpdateHandler = { [weak self] state in
             guard let self = self else { return }
             switch state {
             case .ready:
-                if let p = listener.port?.rawValue { onReady(p) }
+                if !self.ready, let p = listener.port?.rawValue {
+                    self.ready = true
+                    onReady(p)
+                }
             case .failed(let err):
                 print("[biji] listener failed: \(err)")
             default:
@@ -49,20 +44,21 @@ final class LocalServer {
 
     private func handle(_ conn: NWConnection) {
         conn.start(queue: queue)
-        conn.receive(minimumIncompleteLength: 2, maximumLength: 65536) { [weak self] data, _, _, _ in
+        conn.receive(minimumIncompleteLength: 2, maximumLength: 262144) { [weak self] data, _, _, _ in
             guard let self = self, let data = data, !data.isEmpty else {
-                conn.cancel(); return
+                conn.cancel()
+                return
             }
             let head = String(decoding: data, as: UTF8.self)
             let firstLine = head.split(separator: "\r\n", maxSplits: 1).first ?? ""
             let parts = firstLine.split(separator: " ")
             let rawPath = parts.count >= 2 ? String(parts[1]) : "/"
             let path = rawPath.split(separator: "?", maxSplits: 1).first.map(String.init) ?? "/"
-            let rel = (path == "/" ? "/index.html" : path) as String
-            let fileURL = self.root.appendingPathComponent(rel.hasPrefix("/") ? String(rel.dropFirst()) : rel)
-            // 防目录穿越
-            let resolved = fileURL.standardizedFileURL.path
-            guard resolved.hasPrefix(self.root.standardizedFileURL.path) else {
+            let rel = (path == "/") ? "/index.html" : path
+            let name = rel.hasPrefix("/") ? String(rel.dropFirst()) : rel
+
+            let fileURL = self.root.appendingPathComponent(name).standardizedFileURL
+            guard fileURL.path.hasPrefix(self.root.path) else {
                 self.send(conn, status: "403 Forbidden", mime: "text/plain", body: Data("forbidden".utf8))
                 return
             }
@@ -70,8 +66,7 @@ final class LocalServer {
                 self.send(conn, status: "404 Not Found", mime: "text/plain", body: Data("not found".utf8))
                 return
             }
-            let mime = self.mime(for: resolved)
-            self.send(conn, status: "200 OK", mime: mime, body: body)
+            self.send(conn, status: "200 OK", mime: self.mime(for: fileURL.path), body: body)
         }
     }
 
