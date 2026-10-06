@@ -12,6 +12,8 @@ final class LocalServer {
     private let queue = DispatchQueue(label: "biji.server", qos: .userInitiated)
     private var listener: NWListener?
     private var ready = false
+    /// 特殊路由：/biji-import.json 由 App 动态提供（导入的备份数据存在沙盒里，不在包内）
+    var importProvider: (() -> Data?)?
 
     init(root: URL) throws {
         guard FileManager.default.fileExists(atPath: root.path) else { throw ServerError.noRoot }
@@ -54,6 +56,17 @@ final class LocalServer {
             let parts = firstLine.split(separator: " ")
             let rawPath = parts.count >= 2 ? String(parts[1]) : "/"
             let path = rawPath.split(separator: "?", maxSplits: 1).first.map(String.init) ?? "/"
+
+            // 动态路由：导入数据（存在沙盒，不在包内）
+            if path == "/biji-import.json" {
+                if let d = self.importProvider?() {
+                    self.send(conn, status: "200 OK", mime: "application/json; charset=utf-8", body: d)
+                } else {
+                    self.send(conn, status: "404 Not Found", mime: "text/plain", body: Data("no staged import".utf8))
+                }
+                return
+            }
+
             let rel = (path == "/") ? "/index.html" : path
             let name = rel.hasPrefix("/") ? String(rel.dropFirst()) : rel
 

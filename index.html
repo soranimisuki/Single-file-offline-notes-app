@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<!-- PWA：添加到主屏幕后全屏运行、砂岩主题色 -->
+<!-- PWA：添加到主屏幕后全屏运行、砂岩主题色（仅 https 下生效，file:// 与桌面壳无影响） -->
 <link rel="manifest" href="./manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -2832,7 +2832,19 @@ function bijiSaveText(name,text){
 }
 function bijiPickText(cb){
   var nat=bijiNative(); if(!nat) return false;
-  window.__bijiNativeImport=function(txt){ try{ cb(txt); }catch(e){ toast('导入失败：'+e.message,'err'); } };
+  // iOS：原生先把内容落到沙盒，再通知页面去取（避免超长字符串穿不过 JS 桥）
+  window.__bijiNativeImport=function(v){
+    try{
+      if(v==='file'){
+        if(typeof fetch!=='function'){ cb(''); return; }
+        fetch('./biji-import.json?ts='+Date.now()).then(function(r){ return r.text(); }).then(cb).catch(function(e){
+          toast('读取导入数据失败：'+e.message,'err');
+        });
+        return;
+      }
+      cb(v);
+    }catch(e){ toast('导入失败：'+e.message,'err'); }
+  };
   try{
     if(nat.postMessage) nat.postMessage({type:'import'});
     else if(nat.pick_text) nat.pick_text();

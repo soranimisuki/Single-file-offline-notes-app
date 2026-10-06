@@ -35,8 +35,15 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHa
                options connectionOptions: UIScene.ConnectionOptions) {
         guard let ws = scene as? UIWindowScene else { return }
         let w = UIWindow(windowScene: ws)
-        w.backgroundColor = UIColor(red: 0.902, green: 0.882, blue: 0.835, alpha: 1)   // 砂岩底色
+
+        // 关键：必须有 rootViewController —— 导入/导出的系统选择器、分享面板都要通过
+        // view controller 呈现。之前直接把 WKWebView addSubview 到 window 上导致
+        // window.rootViewController == nil，present 被静默跳过 → 点「导入」毫无反应。
+        let root = UIViewController()
+        root.view.backgroundColor = UIColor(red: 0.902, green: 0.882, blue: 0.835, alpha: 1)  // 砂岩底色
+        w.rootViewController = root
         window = w
+        w.makeKeyAndVisible()
 
         // 诊断层：出错时把原因显示在屏幕上，而不是白屏/静默退出
         diag.numberOfLines = 0
@@ -45,8 +52,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHa
         diag.textColor = UIColor(white: 0.12, alpha: 1)
         diag.backgroundColor = UIColor(white: 1, alpha: 0.94)
         diag.isHidden = true
-        w.addSubview(diag)
-        w.makeKeyAndVisible()
+        root.view.addSubview(diag)
+        layoutDiag()
 
         // 内置资源检查
         guard let webRoot = Bundle.main.resourceURL?.appendingPathComponent("Web"),
@@ -60,14 +67,15 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHa
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         config.userContentController.add(self, name: "biji")
 
-        let web = WKWebView(frame: w.bounds, configuration: config)
+        let web = WKWebView(frame: root.view.bounds, configuration: config)
         web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         web.navigationDelegate = self
         webView = web
-        w.addSubview(web)
+        root.view.addSubview(web)
 
         // 优先走内置 localhost 服务器：file:// 下 IndexedDB 不可用，图片会丢
         if let srv = try? LocalServer(root: webRoot) {
+            srv.importProvider = { [weak self] in self?.readStagedImport() }
             server = srv
             srv.start(onReady: { [weak self] port in
                 guard let self = self, !self.loaded else { return }
@@ -92,8 +100,29 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHa
     private func note(_ s: String) {
         print("[biji] " + s)
         diag.text = s
-        diag.frame = (window?.bounds ?? .zero).insetBy(dx: 24, dy: 120)
+        layoutDiag()
         diag.isHidden = false
+    }
+
+    private func layoutDiag() {
+        let b = window?.bounds ?? .zero
+        diag.frame = CGRect(x: 24, y: 120, width: max(0, b.width - 48), height: max(0, b.height - 240))
+    }
+
+    /// 弹系统面板的统一入口：一定要有 presenter，否则静默失败
+    @discardableResult
+    private func presentSheet(_ vc: UIViewController, tag: String) -> Bool {
+        guard let host = window?.rootViewController else {
+            note("无法弹出\(tag)：窗口没有 rootViewController")
+            return false
+        }
+        if vc.popoverPresentationController != nil {
+            vc.popoverPresentationController?.sourceView = host.view
+            vc.popoverPresentationController?.sourceRect = CGRect(
+                x: (host.view.bounds.midX), y: (host.view.bounds.midY), width: 1, height: 1)
+        }
+        host.present(vc, animated: true)
+        return true
     }
 
     // MARK: - JS 桥（导出 / 导入）
@@ -114,18 +143,13 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHa
 
     private func saveText(name: String, text: String) {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self, let root = self.window?.rootViewController else { return }
+            guard let self = self else { return }
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             let url = docs.appendingPathComponent(name)
             do {
                 try text.write(to: url, atomically: true, encoding: .utf8)
-                let share = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-                if let pop = share.popoverPresentationController {
-                    pop.sourceView = self.window
-                    pop.sourceRect = CGRect(x: (self.window?.bounds.midX) ?? 0,
-                                            y: (self.window?.bounds.midY) ?? 0, width: 1, height: 1)
-                }
-                root.present(share, animated: true)
+                self.presentSheet(UIActivityViewController(activityItems: [url], applicationActivities: nil),
+                                  tag: "导出分享面板")
             } catch {
                 self.showAlert("保存失败", error.localizedDescription)
             }
@@ -134,20 +158,40 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHa
 
     private func presentImporter() {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self, let root = self.window?.rootViewController else { return }
+            guard let self = self else { return }
             let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.json, .plainText], asCopy: true)
             picker.delegate = self
             picker.allowsMultipleSelection = false
-            root.present(picker, animated: true)
+            self.presentSheet(picker, tag: "导入文件选择器")
         }
     }
 
-    /// 回传给页面的 window.__bijiNativeImport(text)
+    /// 回传导入内容。数据可能很大（含图片 base64），**不走 evaluateJavaScript 传字符串**，
+    /// 而是先写到 App 沙盒，再让页面自己 fetch 取——避免超长 JS 字符串被截断或失败。
     fileprivate func deliverImported(text: String) {
-        let js = "(function(){ if(window.__bijiNativeImport){ window.__bijiNativeImport(\(Self.jsStringLiteral(text))); } })()"
         DispatchQueue.main.async { [weak self] in
-            self?.webView?.evaluateJavaScript(js, completionHandler: nil)
+            guard let self = self else { return }
+            let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            let url = dir.appendingPathComponent("biji-import.json")
+            do {
+                try text.write(to: url, atomically: true, encoding: .utf8)
+                print("[biji] import staged: \(text.count) chars")
+            } catch {
+                self.showAlert("读取失败", error.localizedDescription)
+                return
+            }
+            let js = "(function(){ if(window.__bijiNativeImport){ window.__bijiNativeImport('file'); } })()"
+            self.webView?.evaluateJavaScript(js, completionHandler: nil)
         }
+    }
+
+    /// App 内的文件接口由页面调用（通过本地服务器的 /biji-import.json 路由读取，读一次即清）
+    func readStagedImport() -> Data? {
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("biji-import.json")
+        guard let d = try? Data(contentsOf: url) else { return nil }
+        try? FileManager.default.removeItem(at: url)   // 读一次即清，避免下次误用旧数据
+        return d
     }
 
     /// 借 JSON 序列化生成安全的 JS 字符串字面量（自动转义引号/换行）
