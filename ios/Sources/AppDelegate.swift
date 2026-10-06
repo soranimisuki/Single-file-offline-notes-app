@@ -267,21 +267,6 @@ extension SceneDelegate: WKUIDelegate {
         presentSheet(alert, tag: "输入框")
     }
 
-    /// JS prompt()
-    func webView(_ webView: WKWebView,
-                 runJavaScriptTextInputPanelWithPrompt prompt: String,
-                 defaultText: String?,
-                 initiatedByFrame frame: WKFrameInfo,
-                 completionHandler: @escaping (String?) -> Void) {
-        let alert = UIAlertController(title: "请输入", message: prompt, preferredStyle: .alert)
-        alert.addTextField { $0.text = defaultText }
-        alert.addAction(UIAlertAction(title: "确定", style: .default) { _ in
-            completionHandler(alert.textFields?.first?.text)
-        })
-        alert.addAction(UIAlertAction(title: "取消", style: .cancel) { _ in completionHandler(nil) })
-        presentSheet(alert, tag: "输入框")
-    }
-
 }
 
 // MARK: - 加载诊断
