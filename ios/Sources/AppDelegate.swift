@@ -31,7 +31,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, WKScriptMessageHand
         // 内置资源兜底检查：缺文件直接显示原因
         guard let webRoot = Bundle.main.resourceURL?.appendingPathComponent("Web"),
               FileManager.default.fileExists(atPath: webRoot.appendingPathComponent("index.html").path) else {
-            fatal("内置页面缺失：App 包里找不到 Web/index.html")
+            fatalError("内置页面缺失：App 包里找不到 Web/index.html")
         }
 
         let config = WKWebViewConfiguration()
