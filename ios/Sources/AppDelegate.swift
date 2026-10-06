@@ -8,52 +8,75 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, WKScriptMessageHand
     var window: UIWindow?
     private var webView: WKWebView?
     private var server: LocalServer?
-    private var launched = false
+    private var loaded = false
+    private let diag = UILabel()
 
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
 
         let w = UIWindow(frame: UIScreen.main.bounds)
+        w.backgroundColor = UIColor(red: 0.902, green: 0.882, blue: 0.835, alpha: 1)   // 砂岩底色
         window = w
+
+        // 诊断层：任何一步出错都把原因显示在屏幕上，而不是白屏 / 直接闪退
+        diag.numberOfLines = 0
+        diag.textAlignment = .center
+        diag.font = .systemFont(ofSize: 13)
+        diag.textColor = UIColor(white: 0.12, alpha: 1)
+        diag.backgroundColor = UIColor(white: 1, alpha: 0.94)
+        diag.isHidden = true
+        w.addSubview(diag)
+        w.makeKeyAndVisible()
+
+        // 内置资源兜底检查：缺文件直接显示原因
+        guard let webRoot = Bundle.main.resourceURL?.appendingPathComponent("Web"),
+              FileManager.default.fileExists(atPath: webRoot.appendingPathComponent("index.html").path) else {
+            fatal("内置页面缺失：App 包里找不到 Web/index.html")
+        }
 
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
         config.defaultWebpagePreferences.allowsContentJavaScript = true
-        config.userContentController.add(self, name: "biji")   // 页面导出/导入桥
+        config.userContentController.add(self, name: "biji")
 
         let web = WKWebView(frame: w.bounds, configuration: config)
-        web.scrollView.contentInsetAdjustmentBehavior = .never
         web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        web.navigationDelegate = self
         webView = web
         w.addSubview(web)
-        w.makeKeyAndVisible()
 
-        let webRoot = Bundle.main.resourceURL?.appendingPathComponent("Web")
-
-        if let root = webRoot, let srv = try? LocalServer(root: root) {
+        // 优先走内置 localhost 服务器：file:// 下 IndexedDB 不可用，图片会丢
+        if let srv = try? LocalServer(root: webRoot) {
             server = srv
             srv.start(onReady: { [weak self] port in
-                guard let self = self, !self.launched else { return }
-                self.launched = true
+                guard let self = self, !self.loaded else { return }
+                self.loaded = true
                 if let u = URL(string: "http://127.0.0.1:\(port)/index.html") {
                     DispatchQueue.main.async { self.webView?.load(URLRequest(url: u)) }
                 }
             })
-            // 兜底：3 秒还没起来就直接读本地文件（图片功能会失效，但页面能用）
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-                guard let self = self, !self.launched, let root = webRoot else { return }
-                self.launched = true
-                self.webView?.loadFileURL(root.appendingPathComponent("index.html"),
-                                           allowingReadAccessTo: root)
-            }
-        } else if let root = webRoot {
-            webView?.loadFileURL(root.appendingPathComponent("index.html"), allowingReadAccessTo: root)
+        } else {
+            note("localhost 服务器未启动，改用本地文件打开（图片功能会失效）")
         }
 
+        // 兜底：3.5 秒还没加载成功就直接读文件，至少保证能看到界面
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { [weak self] in
+            guard let self = self, !self.loaded else { return }
+            self.loaded = true
+            self.webView?.loadFileURL(webRoot.appendingPathComponent("index.html"),
+                                      allowingReadAccessTo: webRoot)
+        }
         return true
     }
 
-    // MARK: - JS 桥
+    private func note(_ s: String) {
+        print("[biji] " + s)
+        diag.text = s
+        diag.frame = (window?.bounds ?? .zero).insetBy(dx: 24, dy: 120)
+        diag.isHidden = false
+    }
+
+    // MARK: - JS 桥（导出 / 导入）
 
     func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "biji",
@@ -84,8 +107,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, WKScriptMessageHand
                 }
                 root.present(share, animated: true)
             } catch {
-                let alert = UIAlertController(title: "保存失败", message: error.localizedDescription, preferredStyle: .alert)
-                root.present(alert, animated: true)
+                self.showAlert("保存失败", error.localizedDescription)
             }
         }
     }
@@ -100,25 +122,54 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, WKScriptMessageHand
         }
     }
 
-    /// 回传给页面的 window.__bijiNativeImport(text)
+    /// 把读到的文件回传给页面的 window.__bijiNativeImport(text)
     fileprivate func deliverImported(text: String) {
-        let literal = Self.jsStringLiteral(text)
-        let js = "(function(){ if(window.__bijiNativeImport){ window.__bijiNativeImport(\(literal)); } })()"
+        let js = "(function(){ if(window.__bijiNativeImport){ window.__bijiNativeImport(\(Self.jsStringLiteral(text))); } })()"
         DispatchQueue.main.async { [weak self] in
             self?.webView?.evaluateJavaScript(js, completionHandler: nil)
         }
     }
 
-    /// 生成安全的 JS 字符串字面量（借 JSON 序列化自动转义）
+    /// 借 JSON 序列化生成安全的 JS 字符串字面量（自动转义引号/换行）
     static func jsStringLiteral(_ s: String) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: [s], options: []),
-              var arr = String(data: data, encoding: .utf8),
-              arr.count >= 2 else {
+              var arr = String(data: data, encoding: .utf8), arr.count >= 2 else {
             return "\"\""
         }
         arr.removeFirst()   // [
         arr.removeLast()    // ]
         return arr
+    }
+
+    private func showAlert(_ title: String, _ msg: String) {
+        guard let root = window?.rootViewController else { return }
+        root.present(UIAlertController(title: title, message: msg, preferredStyle: .alert), animated: true)
+    }
+}
+
+// MARK: - 加载诊断（把崩溃变成可见信息）
+
+extension AppDelegate: WKNavigationDelegate {
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        print("[biji] loaded: " + (webView.url?.absoluteString ?? "?"))
+        diag.isHidden = true
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        note("页面加载失败：" + error.localizedDescription)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        note("页面无法打开：" + error.localizedDescription)
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        note("网页进程被系统回收，正在重试…")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self = self, let u = self.webView?.url else { return }
+            self.webView?.load(URLRequest(url: u))
+        }
     }
 }
 
@@ -127,8 +178,6 @@ extension AppDelegate: UIDocumentPickerDelegate {
         guard let url = urls.first else { return }
         var text = ""
         if let s = try? String(contentsOf: url, encoding: .utf8) {
-            text = s
-        } else if let s = try? String(contentsOf: url, encoding: .isoLatin1) {
             text = s
         } else if let d = try? Data(contentsOf: url) {
             text = String(decoding: d, as: UTF8.self)
