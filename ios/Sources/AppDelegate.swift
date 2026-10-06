@@ -2,8 +2,28 @@ import UIKit
 import WebKit
 import UniformTypeIdentifiers
 
+/// App 入口：只负责提供 scene 配置，具体加载逻辑交给 SceneDelegate。
+/// iPadOS 26 走 Scene 生命周期——缺 UIApplicationSceneManifest 会在启动时断言崩溃
+/// （崩溃栈：-[UIApplication _runWithMainScene:] → NSAssertionHandler）。
 @main
-final class AppDelegate: UIResponder, UIApplicationDelegate, WKScriptMessageHandler {
+final class AppDelegate: UIResponder, UIApplicationDelegate {
+
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        return true
+    }
+
+    func application(_ application: UIApplication,
+                     configurationForConnecting connectingSceneSession: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let cfg = UISceneConfiguration(name: "Default", sessionRole: connectingSceneSession.role)
+        cfg.delegateClass = SceneDelegate.self
+        return cfg
+    }
+}
+
+/// 真正的界面所在：WKWebView + 内置 localhost 服务器 + 导出/导入桥
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler {
 
     var window: UIWindow?
     private var webView: WKWebView?
@@ -11,14 +31,14 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, WKScriptMessageHand
     private var loaded = false
     private let diag = UILabel()
 
-    func application(_ application: UIApplication,
-                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-
-        let w = UIWindow(frame: UIScreen.main.bounds)
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
+               options connectionOptions: UIScene.ConnectionOptions) {
+        guard let ws = scene as? UIWindowScene else { return }
+        let w = UIWindow(windowScene: ws)
         w.backgroundColor = UIColor(red: 0.902, green: 0.882, blue: 0.835, alpha: 1)   // 砂岩底色
         window = w
 
-        // 诊断层：任何一步出错都把原因显示在屏幕上，而不是白屏 / 直接闪退
+        // 诊断层：出错时把原因显示在屏幕上，而不是白屏/静默退出
         diag.numberOfLines = 0
         diag.textAlignment = .center
         diag.font = .systemFont(ofSize: 13)
@@ -28,10 +48,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, WKScriptMessageHand
         w.addSubview(diag)
         w.makeKeyAndVisible()
 
-        // 内置资源兜底检查：缺文件直接显示原因
+        // 内置资源检查
         guard let webRoot = Bundle.main.resourceURL?.appendingPathComponent("Web"),
               FileManager.default.fileExists(atPath: webRoot.appendingPathComponent("index.html").path) else {
-            fatalError("内置页面缺失：App 包里找不到 Web/index.html")
+            note("内置页面缺失：App 包里找不到 Web/index.html")
+            return
         }
 
         let config = WKWebViewConfiguration()
@@ -59,14 +80,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, WKScriptMessageHand
             note("localhost 服务器未启动，改用本地文件打开（图片功能会失效）")
         }
 
-        // 兜底：3.5 秒还没加载成功就直接读文件，至少保证能看到界面
+        // 兜底：3.5 秒还没加载成功就直接读文件
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { [weak self] in
             guard let self = self, !self.loaded else { return }
             self.loaded = true
             self.webView?.loadFileURL(webRoot.appendingPathComponent("index.html"),
                                       allowingReadAccessTo: webRoot)
         }
-        return true
     }
 
     private func note(_ s: String) {
@@ -122,7 +142,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, WKScriptMessageHand
         }
     }
 
-    /// 把读到的文件回传给页面的 window.__bijiNativeImport(text)
+    /// 回传给页面的 window.__bijiNativeImport(text)
     fileprivate func deliverImported(text: String) {
         let js = "(function(){ if(window.__bijiNativeImport){ window.__bijiNativeImport(\(Self.jsStringLiteral(text))); } })()"
         DispatchQueue.main.async { [weak self] in
@@ -147,9 +167,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, WKScriptMessageHand
     }
 }
 
-// MARK: - 加载诊断（把崩溃变成可见信息）
+// MARK: - 加载诊断
 
-extension AppDelegate: WKNavigationDelegate {
+extension SceneDelegate: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         print("[biji] loaded: " + (webView.url?.absoluteString ?? "?"))
@@ -173,7 +193,7 @@ extension AppDelegate: WKNavigationDelegate {
     }
 }
 
-extension AppDelegate: UIDocumentPickerDelegate {
+extension SceneDelegate: UIDocumentPickerDelegate {
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let url = urls.first else { return }
         var text = ""
