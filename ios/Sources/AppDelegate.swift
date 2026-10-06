@@ -267,18 +267,21 @@ extension SceneDelegate: WKUIDelegate {
         presentSheet(alert, tag: "输入框")
     }
 
-    /// HTML <input type="file">：把系统选择器接上（图片上传靠它）
-    /// iOS 18+ 的 completionHandler 带 @MainActor @Sendable 标注，少了会 "cannot find type ... in scope"。
+    /// JS prompt()
     func webView(_ webView: WKWebView,
-                 runOpenPanelWith parameters: WKOpenPanelParameters,
+                 runJavaScriptTextInputPanelWithPrompt prompt: String,
+                 defaultText: String?,
                  initiatedByFrame frame: WKFrameInfo,
-                 completionHandler: @escaping @MainActor @Sendable ([URL]?) -> Void) {
-        let picker = UIDocumentPickerViewController(
-            forOpeningContentTypes: [.image, .plainText, .json], asCopy: true)
-        picker.allowsMultipleSelection = parameters.allowsMultipleSelection
-        openPanelCompletion = completionHandler
-        presentSheet(picker, tag: "文件选择器")
+                 completionHandler: @escaping (String?) -> Void) {
+        let alert = UIAlertController(title: "请输入", message: prompt, preferredStyle: .alert)
+        alert.addTextField { $0.text = defaultText }
+        alert.addAction(UIAlertAction(title: "确定", style: .default) { _ in
+            completionHandler(alert.textFields?.first?.text)
+        })
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel) { _ in completionHandler(nil) })
+        presentSheet(alert, tag: "输入框")
     }
+
 }
 
 // MARK: - 加载诊断
