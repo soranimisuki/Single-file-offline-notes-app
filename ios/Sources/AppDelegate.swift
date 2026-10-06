@@ -279,6 +279,7 @@ extension SceneDelegate: WKUIDelegate {
         openPanelCompletion = completionHandler
         presentSheet(picker, tag: "文件选择器")
     }
+}
 
 // MARK: - 加载诊断
 
