@@ -39,8 +39,8 @@ targets:
       properties:
         CFBundleDisplayName: 笔记站
         CFBundleName: Biji
-        CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.0.1"
+        CFBundleVersion: "2"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UISupportedInterfaceOrientations:
@@ -51,6 +51,7 @@ targets:
         LSSupportsOpeningDocumentsInPlace: true
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true      # 允许加载 http://127.0.0.1 的内置页面
+          NSAllowsArbitraryLoads: true        # 双保险：WKWebView 内部请求不被 ATS 拦
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.soranimisuki.biji

@@ -83,6 +83,10 @@ jobs:
           APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
           echo "APP=$APP"
           test -n "$APP"
+          echo "==== Info.plist 关键字段 ===="
+          plutil -p "$APP/Info.plist" | grep -E "CFBundleIdentifier|CFBundleExecutable|CFBundleShortVersion|CFBundleVersion|MinimumOSVersion|UIDeviceFamily|UILaunch|UIFileSharing|NSAppTransport" -A3 || true
+          echo "==== 包内资源 ===="
+          ls "$APP" && ls "$APP/Web" | head -5
           rm -rf "$RUNNER_TEMP/ipa"
           mkdir -p "$RUNNER_TEMP/ipa/Payload"
           cp -R "$APP" "$RUNNER_TEMP/ipa/Payload/"
